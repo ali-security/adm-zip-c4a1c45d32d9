@@ -1,18 +1,24 @@
 name: Linux build
 
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: "Optional mocha selector (space-separated test file paths). Empty runs the full suite."
+        required: false
+        default: ""
 
 jobs:
   build:
     name: Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     strategy:
       matrix:
         # mocha nolonger supports node 10
-        node-version: [12.x, 14.x, 16.x, 18.x, 20.x, 21.x]
+        # 22.4.1 is the exact runtime (npm 10.8.2) the public tarball was packed with
+        node-version: [12.x, 14.x, 16.x, 18.x, 20.x, 21.x, 22.4.1]
 
     steps:
       - name: Clone repository
@@ -23,10 +29,28 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
+      - name: Pin npm registry to the release date (time machine)
+        run: |
+          npm config set registry https://time-machines-npm.sealsecurity.io/
+          npm config set "//time-machines-npm.sealsecurity.io/:_authToken=2024-08-30T07:40:50.607000Z"
+
       - name: Install
         run: |
           npm install
 
       - name: Run Tests
         run: |
-          npm test
+          npm test -- ${{ inputs.test-filter }}
+
+      - name: Pack
+        if: matrix.node-version == '22.4.1'
+        run: |
+          npm pack
+
+      - name: Upload package tarball
+        if: matrix.node-version == '22.4.1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: adm-zip-npm-tarball
+          path: adm-zip-*.tgz
+          if-no-files-found: error
